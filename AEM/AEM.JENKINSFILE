@@ -1,0 +1,91 @@
+// Assumptions - the build happens on the dev author and publisher nodes
+// The same goes for the deployment - they are deploying to self, so update aem.toml to reference 127.0.0.1 as the hostname
+
+pipeline{   
+    agent none
+    environment{
+        AEM_ROOT = "source/aem/sauditourism"
+        AEM_PASSWORD = credentials('AEM-PASS')
+        // aem = "/usr/local/bin/aem"
+        HOME = '.'
+        npm_config_cache = 'npm-cache'
+    }
+
+    stages{
+
+        stage("MVN: Clean"){
+            parallel{
+                stage("Author: Clean"){
+                    agent { node { label 'dev-author' } }
+                    steps{
+                        withMaven(maven: 'Maven-3'){
+                            sh "cd ${AEM_ROOT} && mvn clean --batch-mode"
+                        }
+                    }
+                }
+
+                stage("Publisher: Clean"){
+                    agent { node { label 'dev-publisher' } }
+                    steps{
+                        withMaven(maven: 'Maven-3'){
+                            sh "cd ${AEM_ROOT} && mvn clean --batch-mode"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage("MVN: Build"){
+            parallel{
+                stage("Author: Build"){
+                    agent { node { label 'dev-author' } }
+                    steps{
+                        withMaven(maven: 'Maven-3'){
+                            sh "cd ${AEM_ROOT} && mvn clean install -DskipFrontend=true --batch-mode"
+                        }
+                    }
+                }
+
+                stage("Publisher: Build"){
+                    agent { node { label 'dev-publisher' } }
+                    steps{
+                        withMaven(maven: 'Maven-3'){
+                            sh "cd ${AEM_ROOT} && mvn clean install -DskipFrontend=true --batch-mode"
+                        }
+                    }
+                } 
+            }
+        }
+
+        stage("AEM: Deploy"){
+            parallel{
+                stage("Author: Deploy"){
+                    agent { node { label 'dev-author' } }
+                    steps{
+                        sh 'cd ${AEM_ROOT} && aem deploy -b -n author1-dev -p $AEM_PASSWORD'
+                    }
+                }
+
+                stage("Publisher: Deploy"){
+                    agent { node { label 'dev-publisher' } }
+                    steps{
+                        sh 'cd ${AEM_ROOT} && aem deploy -b -n publisher1-dev -p $AEM_PASSWORD'
+                    }
+                }
+
+            }
+        }
+      
+            
+    }
+
+    post{
+        always {
+            script{
+                echo "Build Done!"
+                cleanWs()
+			}     
+        }
+    }
+        
+}

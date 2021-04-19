@@ -1,0 +1,77 @@
+podTemplate(label: 'android', cloud: 'kubernetes', containers: [
+    containerTemplate(name: 'nodejs', 
+    image: 'docker.io/kanambiar/node:latest',
+    alwaysPullImage: true,
+    envVars: [envVar(key: 'HOME', value: '.'),
+    envVar(key: 'npm_config_cache', value: 'npm-cache')],
+    ttyEnabled: true, command: 'cat'),
+    containerTemplate(name: 'android-build-tools', 
+    image: 'docker.io/kanambiar/android-tools:latest',
+    envVars: [envVar(key: 'HOME', value: '.'), 
+    envVar(key: 'ANDROID_SDK_ROOT', value: '/opt/android'), 
+    envVar(key: 'npm_config_cache', value: 'npm-cache')],
+    resourceLimitMemory:'3G',
+    alwaysPullImage: true,
+    ttyEnabled: true, command: 'cat'),
+    containerTemplate(name: 'sonar-scanner',
+    image: 'docker.io/kanambiar/sonar-scanner-cli',
+    alwaysPullImage: true,
+    envVars: [envVar(key: 'SONAR_HOST_URL', value: 'http://52:9000'), 
+    envVar(key: 'SONAR_LOGIN', value: 'dda6aaa8d7d0e3ba13d284e1323')],
+    ttyEnabled: true, command: 'cat'),
+    containerTemplate(name: 'fastlane',
+    image: 'docker.io/kanambiar/fastlane',
+    alwaysPullImage: true,
+    envVars: [envVar(key: 'APK_PATH', value: './app/build/outputs/apk/dev/debug/app-dev-debug.apk'), 
+    envVar(key: 'HUWAEI_C_ID', value: '60877008'),
+    envVar(key: 'HUWAEI_C_SEC', value: 'BA676C31463BE8805'),
+    envVar(key: 'HUWAEI_APP_ID', value: '1077')],
+    ttyEnabled: true, command: 'cat')
+]) {
+
+    node('android') {
+
+            stage('Git: Checkout SCM'){
+                checkout scm
+            }
+
+            container('nodejs'){
+                
+                stage("Installing dependencies"){
+                    sh "bash Pipeline/android/steps/deps.sh"
+                }
+
+                stage("Running Unit Tests"){
+                    sh "./node_modules/.bin/jest __tests__/App-test.js || exit 0"   
+                }
+
+            }
+
+            container('sonar-scanner'){
+                stage("Performing sonar scan"){
+                    sh "sonar-scanner"
+                }
+            }
+
+            container('android-build-tools'){
+                
+                stage("Generating Build APK"){ 
+                    sh "./android/gradlew --version"
+                    sh "export ENVFILE=.env.dev && npx jetify && cd ./android && ./gradlew app:assembleDevDebug"           
+                }
+
+                stage("Archiving Artifacts"){
+                    archiveArtifacts artifacts: 'android/app/build/outputs/apk/**/*.apk', fingerprint: true
+                }
+            }
+
+            container('fastlane'){
+
+                stage("Huwaei: Upload app for review"){
+                    sh "cd android && fastlane deployBundleHuaweiRelease"
+                }
+            }
+
+        }    
+
+}

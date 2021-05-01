@@ -1,13 +1,8 @@
-// Assumptions - the build happens on the dev author and publisher nodes
-// The same goes for the deployment - they are deploying to self, so update aem.toml to reference 127.0.0.1 as the hostname
-
 pipeline{   
     agent none
     environment{
         AEM_ROOT = "source/aem/sauditourism"
         AEM_PASSWORD = credentials('AEM-PASS')
-        // aem = "/usr/local/bin/aem"
-        HOME = '.'
         npm_config_cache = 'npm-cache'
     }
 
@@ -41,7 +36,7 @@ pipeline{
                     agent { node { label 'dev-author' } }
                     steps{
                         withMaven(maven: 'Maven-3'){
-                            sh "cd ${AEM_ROOT} && mvn clean install -DskipFrontend=true --batch-mode"
+                            sh "cd ${AEM_ROOT} && mvn clean install -DskipFrontend=false --batch-mode"
                         }
                     }
                 }
@@ -50,7 +45,7 @@ pipeline{
                     agent { node { label 'dev-publisher' } }
                     steps{
                         withMaven(maven: 'Maven-3'){
-                            sh "cd ${AEM_ROOT} && mvn clean install -DskipFrontend=true --batch-mode"
+                            sh "cd ${AEM_ROOT} && mvn clean install -DskipFrontend=false --batch-mode"
                         }
                     }
                 } 
@@ -62,30 +57,30 @@ pipeline{
                 stage("Author: Deploy"){
                     agent { node { label 'dev-author' } }
                     steps{
-                        sh 'cd ${AEM_ROOT} && aem deploy -b -n author1-dev -p $AEM_PASSWORD'
+                        sh 'cd ${AEM_ROOT} && aem deploy -b -n author1 -p $AEM_PASSWORD'
                     }
                 }
 
                 stage("Publisher: Deploy"){
                     agent { node { label 'dev-publisher' } }
                     steps{
-                        sh 'cd ${AEM_ROOT} && aem deploy -b -n publisher1-dev -p $AEM_PASSWORD'
+                        sh 'cd ${AEM_ROOT} && aem deploy -b -n publisher1 -p $AEM_PASSWORD'
                     }
                 }
 
             }
         }
+
+        stage("AEM: Flush Dispatcher"){
+            agent { node { label 'dev-dispatcher' } }
+            steps{
+                sh 'cd ${AEM_ROOT} && aem invalidate -n dispatcher1 -p /content/sauditourism'
+                sh 'cd ${AEM_ROOT} && aem invalidate -n dispatcher1 -p /etc.clientlibs'
+                sh 'cd ${AEM_ROOT} && aem invalidate -n dispatcher1 -p /bin'
+            }
+        }
       
             
-    }
-
-    post{
-        always {
-            script{
-                echo "Build Done!"
-                cleanWs()
-			}     
-        }
     }
         
 }
